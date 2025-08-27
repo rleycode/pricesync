@@ -81,13 +81,7 @@ class DatabaseUpdater:
             update_fields = [f"{self.price_field} = %s"]
             values = [float(price)]
             
-            if discount is not None:
-                update_fields.append("discount = %s")
-                values.append(float(discount))
-            
-            if discount_price is not None:
-                update_fields.append("discount_price = %s")
-                values.append(float(discount_price))
+            # Убираем поля discount и discount_price - их нет в oc_product
             
             # Добавляем условие WHERE
             values.append(code_1c)
@@ -164,13 +158,7 @@ class DatabaseUpdater:
                     update_fields = [f"{self.price_field} = %s"]
                     values = [float(price)]
                     
-                    if discount is not None:
-                        update_fields.append("discount = %s")
-                        values.append(float(discount))
-                    
-                    if discount_price is not None:
-                        update_fields.append("discount_price = %s")
-                        values.append(float(discount_price))
+                    # Убираем поля discount и discount_price - их нет в oc_product
                     
                     values.append(code_1c)
                     
@@ -230,7 +218,7 @@ class DatabaseUpdater:
             cursor = self.connection.cursor()
             
             sql = f"""
-                SELECT {self.code_field}, {self.price_field}, discount, discount_price, name
+                SELECT {self.code_field}, {self.price_field}
                 FROM {self.products_table}
                 WHERE {self.code_field} = %s
             """
