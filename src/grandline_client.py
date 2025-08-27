@@ -111,6 +111,67 @@ class GrandLineClient:
             logger.error(f"Unexpected error: {e}")
             raise
     
+    def get_nomenclatures_with_names(self, nomenclature_ids: List[str]) -> Dict[str, Dict]:
+        """Получает номенклатуры с названиями и кодами"""
+        try:
+            url = f"{self.base_url}/nomenclatures/"
+            all_mappings = {}
+            
+            # Ограничиваем запрос только первой страницей чтобы избежать 429 ошибки
+            limit = 20000
+            offset = 0
+            
+            params = {
+                'api_key': self.api_key,
+                'limit': limit,
+                'offset': offset
+            }
+            
+            logger.info(f"Requesting nomenclatures with names, limit={limit}")
+            
+            # Retry логика для 502 и 429 ошибок
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.session.get(url, params=params, timeout=30)
+                    response.raise_for_status()
+                    break
+                except requests.exceptions.HTTPError as e:
+                    if e.response.status_code in [502, 429] and attempt < max_retries - 1:
+                        wait_time = 10 if e.response.status_code == 429 else 5
+                        logger.warning(f"{e.response.status_code} error, retrying in {wait_time} seconds... (attempt {attempt + 1}/{max_retries})")
+                        import time
+                        time.sleep(wait_time)
+                        continue
+                    raise
+            
+            data = response.json()
+            items = data.get('items', [])
+            
+            logger.info(f"Received {len(items)} nomenclature items from API")
+            
+            # Обрабатываем только нужные nomenclature_ids
+            for item in items:
+                nomenclature_id = item.get('id_1c')
+                code_1c = item.get('code_1c')
+                name = item.get('name', item.get('title', ''))  # Пробуем разные поля для названия
+                
+                if nomenclature_id and code_1c and nomenclature_id in nomenclature_ids:
+                    all_mappings[nomenclature_id] = {
+                        'code_1c': code_1c,
+                        'name': name or f"Товар {code_1c}"
+                    }
+            
+            logger.info(f"Received {len(all_mappings)} nomenclature_id mappings with names")
+            return all_mappings
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error requesting nomenclature with names: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            raise
+    
     def process_prices_for_update(self) -> List[Dict]:
         try:
             prices_data = self.get_prices()
