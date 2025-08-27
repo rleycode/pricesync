@@ -61,52 +61,45 @@ class GrandLineClient:
             url = f"{self.base_url}/nomenclatures/"
             all_mappings = {}
             
-            # Получаем все номенклатуры с пагинацией
-            offset = 0
+            # Ограничиваем запрос только первой страницей чтобы избежать 429 ошибки
             limit = 20000
+            offset = 0
             
-            while True:
-                params = {
-                    'api_key': self.api_key,
-                    'limit': limit,
-                    'offset': offset
-                }
-                
-                logger.info(f"Requesting nomenclatures with offset={offset}, limit={limit}")
-                
-                # Retry логика для 502 ошибок
-                max_retries = 3
-                for attempt in range(max_retries):
-                    try:
-                        response = self.session.get(url, params=params, timeout=30)
-                        response.raise_for_status()
-                        break
-                    except requests.exceptions.HTTPError as e:
-                        if e.response.status_code == 502 and attempt < max_retries - 1:
-                            logger.warning(f"502 error, retrying in 5 seconds... (attempt {attempt + 1}/{max_retries})")
-                            import time
-                            time.sleep(5)
-                            continue
-                        raise
-                
-                data = response.json()
-                items = data.get('items', [])
-                
-                if not items:
+            params = {
+                'api_key': self.api_key,
+                'limit': limit,
+                'offset': offset
+            }
+            
+            logger.info(f"Requesting nomenclatures with limit={limit}")
+            
+            # Retry логика для 502 и 429 ошибок
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.session.get(url, params=params, timeout=30)
+                    response.raise_for_status()
                     break
-                
-                # Обрабатываем только нужные nomenclature_ids
-                for item in items:
-                    nomenclature_id = item.get('id_1c')
-                    code_1c = item.get('code_1c')
-                    if nomenclature_id and code_1c and nomenclature_id in nomenclature_ids:
-                        all_mappings[nomenclature_id] = code_1c
-                
-                # Если получили меньше чем limit, значит это последняя страница
-                if len(items) < limit:
-                    break
-                    
-                offset += limit
+                except requests.exceptions.HTTPError as e:
+                    if e.response.status_code in [502, 429] and attempt < max_retries - 1:
+                        wait_time = 10 if e.response.status_code == 429 else 5
+                        logger.warning(f"{e.response.status_code} error, retrying in {wait_time} seconds... (attempt {attempt + 1}/{max_retries})")
+                        import time
+                        time.sleep(wait_time)
+                        continue
+                    raise
+            
+            data = response.json()
+            items = data.get('items', [])
+            
+            logger.info(f"Received {len(items)} nomenclature items from API")
+            
+            # Обрабатываем только нужные nomenclature_ids
+            for item in items:
+                nomenclature_id = item.get('id_1c')
+                code_1c = item.get('code_1c')
+                if nomenclature_id and code_1c and nomenclature_id in nomenclature_ids:
+                    all_mappings[nomenclature_id] = code_1c
             
             logger.info(f"Received {len(all_mappings)} nomenclature_id -> code_1c mappings")
             return all_mappings
