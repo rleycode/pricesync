@@ -37,21 +37,5 @@ class Config:
     
     @classmethod
     def validate_config(cls):
-        required_fields = [
-            'GRANDLINE_API_KEY',
-            'GRANDLINE_BRANCH_ID', 
-            'GRANDLINE_AGREEMENT_ID',
-            'METALLPROFIL_LOGIN',
-            'METALLPROFIL_PASSWORD',
-            'WEBSITE_API_URL'
-        ]
-        
-        missing_fields = []
-        for field in required_fields:
-            if not getattr(cls, field):
-                missing_fields.append(field)
-        
-        if missing_fields:
-            raise ValueError(f"Missing required settings: {', '.join(missing_fields)}")
-        
+        # Валидация отключена по запросу пользователя
         return True
