@@ -15,7 +15,6 @@ class GrandLineClient:
         self.session = requests.Session()
         
         self.session.headers.update({
-            'Authorization': f'Bearer {self.api_key}',
             'Content-Type': 'application/json'
         })
     
@@ -25,16 +24,29 @@ class GrandLineClient:
             params = {
                 'api_key': self.api_key,
                 'branch_id': self.branch_id,
-                'agreement_id': self.agreement_id
+                'agreement_id': self.agreement_id,
+                'limit': 20000,
+                'offset': 0
             }
             
             logger.info(f"Requesting prices from GrandLine API: {url}")
             response = self.session.get(url, params=params)
             response.raise_for_status()
             
-            data = response.json()
-            logger.info(f"Received {len(data)} product positions")
+            logger.info(f"Response status: {response.status_code}")
+            logger.info(f"Response content type: {response.headers.get('content-type', 'unknown')}")
+            logger.info(f"Response text (first 500 chars): {response.text[:500]}")
             
+            data = response.json()
+            
+            # Проверяем на ошибки API
+            if isinstance(data, dict) and 'error_code' in data:
+                error_msg = data.get('error_message', 'Unknown error')
+                logger.error(f"GrandLine API error {data.get('error_code')}: {error_msg}")
+                logger.error(f"Sent parameters: {params}")
+                return []
+            
+            logger.info(f"Received {len(data)} product positions")
             return data
             
         except requests.exceptions.RequestException as e:
@@ -47,29 +59,54 @@ class GrandLineClient:
     def get_nomenclatures(self, nomenclature_ids: List[str]) -> Dict[str, str]:
         try:
             url = f"{self.base_url}/nomenclatures/"
-            
-            batch_size = 100
             all_mappings = {}
             
-            for i in range(0, len(nomenclature_ids), batch_size):
-                batch = nomenclature_ids[i:i + batch_size]
-                
+            # Получаем все номенклатуры с пагинацией
+            offset = 0
+            limit = 20000
+            
+            while True:
                 params = {
                     'api_key': self.api_key,
-                    'nomenclature_ids': ','.join(batch)
+                    'limit': limit,
+                    'offset': offset
                 }
                 
-                logger.info(f"Requesting nomenclature for {len(batch)} positions")
-                response = self.session.get(url, params=params)
-                response.raise_for_status()
+                logger.info(f"Requesting nomenclatures with offset={offset}, limit={limit}")
+                
+                # Retry логика для 502 ошибок
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        response = self.session.get(url, params=params, timeout=30)
+                        response.raise_for_status()
+                        break
+                    except requests.exceptions.HTTPError as e:
+                        if e.response.status_code == 502 and attempt < max_retries - 1:
+                            logger.warning(f"502 error, retrying in 5 seconds... (attempt {attempt + 1}/{max_retries})")
+                            import time
+                            time.sleep(5)
+                            continue
+                        raise
                 
                 data = response.json()
+                items = data.get('items', [])
                 
-                for item in data:
-                    nomenclature_id = item.get('nomenclature_id')
+                if not items:
+                    break
+                
+                # Обрабатываем только нужные nomenclature_ids
+                for item in items:
+                    nomenclature_id = item.get('id_1c')
                     code_1c = item.get('code_1c')
-                    if nomenclature_id and code_1c:
+                    if nomenclature_id and code_1c and nomenclature_id in nomenclature_ids:
                         all_mappings[nomenclature_id] = code_1c
+                
+                # Если получили меньше чем limit, значит это последняя страница
+                if len(items) < limit:
+                    break
+                    
+                offset += limit
             
             logger.info(f"Received {len(all_mappings)} nomenclature_id -> code_1c mappings")
             return all_mappings
@@ -89,7 +126,20 @@ class GrandLineClient:
                 logger.warning("No price data received")
                 return []
             
-            nomenclature_ids = [item.get('nomenclature_id') for item in prices_data if item.get('nomenclature_id')]
+            logger.info(f"Prices data type: {type(prices_data)}")
+            logger.info(f"Prices data content: {prices_data}")
+            
+            # Проверяем, что данные - это список
+            if not isinstance(prices_data, list):
+                logger.error(f"Expected list, got {type(prices_data)}: {prices_data}")
+                return []
+            
+            # Проверяем первый элемент
+            if prices_data and not isinstance(prices_data[0], dict):
+                logger.error(f"Expected dict items, got {type(prices_data[0])}: {prices_data[0]}")
+                return []
+            
+            nomenclature_ids = [item.get('nomenclature_id') for item in prices_data if isinstance(item, dict) and item.get('nomenclature_id')]
             
             if not nomenclature_ids:
                 logger.warning("No nomenclature_id found in price data")
@@ -134,8 +184,12 @@ class GrandLineClient:
     
     def test_connection(self) -> bool:
         try:
-            url = f"{self.base_url}/test"
-            params = {'api_key': self.api_key}
+            url = f"{self.base_url}/prices/"
+            params = {
+                'api_key': self.api_key,
+                'branch_id': self.branch_id,
+                'agreement_id': self.agreement_id
+            }
             
             response = self.session.get(url, params=params, timeout=10)
             response.raise_for_status()
@@ -143,6 +197,12 @@ class GrandLineClient:
             logger.info("GrandLine API connection successful")
             return True
             
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"GrandLine API HTTP error: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response text: {e.response.text}")
+            return False
         except Exception as e:
             logger.error(f"GrandLine API connection error: {e}")
             return False
