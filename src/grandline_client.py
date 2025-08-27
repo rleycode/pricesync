@@ -154,12 +154,12 @@ class GrandLineClient:
             for item in items:
                 nomenclature_id = item.get('id_1c')
                 code_1c = item.get('code_1c')
-                name = item.get('name', item.get('title', ''))  # Пробуем разные поля для названия
+                full_name = item.get('full_name', '')
                 
                 if nomenclature_id and code_1c and nomenclature_id in nomenclature_ids:
                     all_mappings[nomenclature_id] = {
                         'code_1c': code_1c,
-                        'name': name or f"Товар {code_1c}"
+                        'name': full_name or f"Товар {code_1c}"
                     }
             
             logger.info(f"Received {len(all_mappings)} nomenclature_id mappings with names")
