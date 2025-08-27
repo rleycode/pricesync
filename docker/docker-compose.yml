@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  pricesync:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: pricesync
+    environment:
+      # Переменные окружения из .env файла
+      - GRANDLINE_API_KEY=${GRANDLINE_API_KEY}
+      - GRANDLINE_BRANCH_ID=${GRANDLINE_BRANCH_ID}
+      - GRANDLINE_AGREEMENT_ID=${GRANDLINE_AGREEMENT_ID}
+      - GRANDLINE_BASE_URL=${GRANDLINE_BASE_URL}
+      - METALLPROFIL_LOGIN=${METALLPROFIL_LOGIN}
+      - METALLPROFIL_PASSWORD=${METALLPROFIL_PASSWORD}
+      - METALLPROFIL_URL=${METALLPROFIL_URL}
+      - WEBSITE_API_URL=${WEBSITE_API_URL}
+      - WEBSITE_API_KEY=${WEBSITE_API_KEY}
+      - DOWNLOAD_DIR=/app/downloads
+      - LOG_DIR=/app/logs
+      - BROWSER_HEADLESS=true
+      - BROWSER_TIMEOUT=30
+      - SYNC_SCHEDULE_TIME=${SYNC_SCHEDULE_TIME:-09:00}
+    volumes:
+      - ./downloads:/app/downloads
+      - ./logs:/app/logs
+      - ../.env:/app/.env:ro
+    restart: unless-stopped
+    command: ["--mode", "schedule"]
+
+  # Сервис для разовой синхронизации
+  pricesync-once:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: pricesync-once
+    environment:
+      - GRANDLINE_API_KEY=${GRANDLINE_API_KEY}
+      - GRANDLINE_BRANCH_ID=${GRANDLINE_BRANCH_ID}
+      - GRANDLINE_AGREEMENT_ID=${GRANDLINE_AGREEMENT_ID}
+      - GRANDLINE_BASE_URL=${GRANDLINE_BASE_URL}
+      - METALLPROFIL_LOGIN=${METALLPROFIL_LOGIN}
+      - METALLPROFIL_PASSWORD=${METALLPROFIL_PASSWORD}
+      - METALLPROFIL_URL=${METALLPROFIL_URL}
+      - WEBSITE_API_URL=${WEBSITE_API_URL}
+      - WEBSITE_API_KEY=${WEBSITE_API_KEY}
+      - DOWNLOAD_DIR=/app/downloads
+      - LOG_DIR=/app/logs
+      - BROWSER_HEADLESS=true
+    volumes:
+      - ./downloads:/app/downloads
+      - ./logs:/app/logs
+      - ../.env:/app/.env:ro
+    profiles:
+      - manual
+    command: ["--mode", "once"]
